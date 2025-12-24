@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  openbb-platform:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: openbb-odp
+    restart: unless-stopped
+    ports:
+      - "6900:6900"
+    volumes:
+      - openbb-data:/root/.openbb_platform
+      - ../config:/app/config:ro
+    environment:
+      - OPENBB_API_HOST=0.0.0.0
+      - OPENBB_API_PORT=6900
+      - OPENBB_PAT=${OPENBB_PAT:-}
+    networks:
+      - openbb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6900/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional: Nginx reverse proxy for HTTPS
+  nginx:
+    image: nginx:alpine
+    container_name: openbb-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../config/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - openbb-platform
+    networks:
+      - openbb-network
+    profiles:
+      - with-ssl
+
+volumes:
+  openbb-data:
+
+networks:
+  openbb-network:
+    driver: bridge
