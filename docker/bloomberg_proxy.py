@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import os
+from datetime import datetime
 
 app = FastAPI(title="Bloomberg News Proxy")
 
@@ -21,10 +22,11 @@ headers = {
     "x-rapidapi-key": RAPIDAPI_KEY,
 }
 
+# Widget configuration for OpenBB Workspace
 WIDGETS_CONFIG = {
     "bloomberg_news_markets": {
         "name": "Bloomberg Markets News",
-        "description": "Latest market news from Bloomberg",
+        "description": "Latest market news from Bloomberg - Click headline to open article",
         "category": "News",
         "type": "table",
         "searchCategory": "News",
@@ -36,74 +38,78 @@ WIDGETS_CONFIG = {
                 "label": "Category",
                 "type": "form",
                 "value": "markets",
-                "description": "News category: markets, technology, politics, industries"
+                "description": "markets, technology, politics, industries, wealth, pursuits, businessweek, opinion"
             }
         ],
         "data": {
             "table": {
                 "showAll": True,
                 "columnsDefs": [
-                    {"field": "title", "headerName": "Title", "cellDataType": "text"},
-                    {"field": "published", "headerName": "Published", "cellDataType": "number"},
-                    {"field": "primarySite", "headerName": "Category", "cellDataType": "text"},
-                    {"field": "shortURL", "headerName": "URL", "cellDataType": "text"}
+                    {"field": "time", "headerName": "Time", "cellDataType": "text", "width": 80},
+                    {"field": "headline", "headerName": "Headline", "cellDataType": "text", "flex": 1, "cellRenderer": "linkRenderer"},
+                    {"field": "category", "headerName": "Category", "cellDataType": "text", "width": 100}
                 ]
             }
         },
-        "source": ["Bloomberg via RapidAPI"]
+        "source": ["Bloomberg"]
     },
-    "bloomberg_news_region": {
-        "name": "Bloomberg Regional News",
-        "description": "News by region from Bloomberg",
+    "bloomberg_news_tech": {
+        "name": "Bloomberg Technology News",
+        "description": "Latest technology news from Bloomberg",
         "category": "News",
         "type": "table",
         "searchCategory": "News",
-        "endpoint": "news/list-by-region",
-        "widgetId": "bloomberg_news_region",
+        "endpoint": "stories/list",
+        "widgetId": "bloomberg_news_tech",
         "params": [
             {
                 "paramName": "id",
-                "label": "Region",
+                "label": "Category",
                 "type": "form",
-                "value": "us",
-                "description": "Region: us, europe, asia"
+                "value": "technology",
+                "description": "Category"
             }
         ],
         "data": {
             "table": {
                 "showAll": True,
                 "columnsDefs": [
-                    {"field": "title", "headerName": "Title", "cellDataType": "text"},
-                    {"field": "published", "headerName": "Published", "cellDataType": "number"},
-                    {"field": "shortURL", "headerName": "URL", "cellDataType": "text"}
+                    {"field": "time", "headerName": "Time", "cellDataType": "text", "width": 80},
+                    {"field": "headline", "headerName": "Headline", "cellDataType": "text", "flex": 1, "cellRenderer": "linkRenderer"},
+                    {"field": "category", "headerName": "Category", "cellDataType": "text", "width": 100}
                 ]
             }
         },
-        "source": ["Bloomberg via RapidAPI"]
+        "source": ["Bloomberg"]
     },
-    "bloomberg_market_movers": {
-        "name": "Bloomberg Market Movers",
-        "description": "Top market movers from Bloomberg",
-        "category": "Markets",
+    "bloomberg_news_politics": {
+        "name": "Bloomberg Politics News",
+        "description": "Latest political news from Bloomberg",
+        "category": "News",
         "type": "table",
-        "searchCategory": "Markets",
-        "endpoint": "market/get-movers",
-        "widgetId": "bloomberg_market_movers",
+        "searchCategory": "News",
+        "endpoint": "stories/list",
+        "widgetId": "bloomberg_news_politics",
         "params": [
             {
                 "paramName": "id",
-                "label": "Market",
+                "label": "Category",
                 "type": "form",
-                "value": "us",
-                "description": "Market: us, europe, asia"
+                "value": "politics",
+                "description": "Category"
             }
         ],
         "data": {
             "table": {
-                "showAll": True
+                "showAll": True,
+                "columnsDefs": [
+                    {"field": "time", "headerName": "Time", "cellDataType": "text", "width": 80},
+                    {"field": "headline", "headerName": "Headline", "cellDataType": "text", "flex": 1, "cellRenderer": "linkRenderer"},
+                    {"field": "category", "headerName": "Category", "cellDataType": "text", "width": 100}
+                ]
             }
         },
-        "source": ["Bloomberg via RapidAPI"]
+        "source": ["Bloomberg"]
     }
 }
 
@@ -115,9 +121,17 @@ async def get_widgets():
 async def health():
     return {"status": "ok"}
 
+def format_timestamp(ts):
+    """Convert Unix timestamp to readable time"""
+    try:
+        dt = datetime.fromtimestamp(ts)
+        return dt.strftime("%H:%M")
+    except:
+        return ""
+
 @app.get("/stories/list")
-async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries, etc.")):
-    """Get stories/news by category"""
+async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries")):
+    """Get stories/news by category - formatted for Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"https://{RAPIDAPI_HOST}/stories/list",
@@ -127,35 +141,30 @@ async def get_stories_list(id: str = Query("markets", description="Category: mar
         )
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
-
-@app.get("/news/list-by-region")
-async def get_news_by_region(id: str = Query("us", description="Region: us, europe, asia, etc.")):
-    """Get news by region"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://{RAPIDAPI_HOST}/news/list-by-region",
-            headers=headers,
-            params={"id": id},
-            timeout=30.0
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
-
-@app.get("/market/get-movers")
-async def get_market_movers(id: str = Query("us", description="Market: us, europe, asia, etc.")):
-    """Get market movers"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://{RAPIDAPI_HOST}/market/get-movers",
-            headers=headers,
-            params={"id": id},
-            timeout=30.0
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
+        
+        data = response.json()
+        
+        # Format response for OpenBB table with clickable links
+        if data.get("status") and data.get("data"):
+            formatted_results = []
+            for item in data["data"]:
+                formatted_results.append({
+                    "time": format_timestamp(item.get("published", 0)),
+                    "headline": item.get("title", ""),
+                    "category": item.get("primarySite", "").upper(),
+                    "url": item.get("shortURL", item.get("longURL", "")),
+                    "thumbnail": item.get("thumbnailImage", "")
+                })
+            
+            return {
+                "results": formatted_results,
+                "provider": "bloomberg",
+                "warnings": None,
+                "chart": None,
+                "extra": {"metadata": {"route": "/stories/list", "category": id}}
+            }
+        
+        return data
 
 @app.get("/media/audios-trending")
 async def get_trending_audios():
