@@ -141,32 +141,39 @@ async def get_stories_list(id: str = Query("markets", description="Category (not
         seen_ids = set()
         unique_items = []
         for item in all_stories:
-            item_id = item.get("id", item.get("headline", ""))
+            item_id = item.get("id", item.get("internalID", item.get("title", "")))
             if item_id and item_id not in seen_ids:
                 seen_ids.add(item_id)
                 unique_items.append(item)
         
         # Sort by timestamp descending (newest first)
-        unique_items.sort(key=lambda x: x.get("publishedAt", 0), reverse=True)
+        unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
+        
+        # Filter by category if specified (client-side filtering)
+        category_map = {
+            "markets": ["markets", "stocks", "currencies"],
+            "technology": ["technology", "tech"],
+            "politics": ["politics", "government"],
+            "industries": ["industries", "energy", "health"],
+            "wealth": ["wealth", "personal-finance"]
+        }
+        
+        if id.lower() in category_map:
+            allowed = category_map[id.lower()]
+            unique_items = [item for item in unique_items 
+                          if item.get("primarySite", "").lower() in allowed 
+                          or any(a in item.get("primarySite", "").lower() for a in allowed)]
         
         formatted_results = []
         for item in unique_items[:20]:
-            # Parse timestamp from new format
-            published = item.get("publishedAt", 0)
-            if isinstance(published, str):
-                try:
-                    from dateutil import parser
-                    dt = parser.parse(published)
-                    time_str = dt.strftime("%H:%M")
-                except:
-                    time_str = published[:5] if len(published) > 5 else ""
-            else:
-                time_str = format_timestamp(published)
+            # Parse Unix timestamp
+            published = item.get("published", 0)
+            time_str = format_timestamp(published) if published else ""
             
             formatted_results.append({
                 "time": time_str,
-                "headline": item.get("headline", item.get("title", "")),
-                "category": item.get("primarySite", item.get("vertical", "NEWS")).upper(),
+                "headline": item.get("title", item.get("headline", "")),
+                "category": item.get("primarySite", "NEWS").upper(),
                 "url": item.get("url", item.get("shortURL", "")),
                 "thumbnail": item.get("thumbnailImage", item.get("image", ""))
             })
@@ -205,26 +212,23 @@ async def get_news_markdown(category: str = Query("markets", description="Catego
         seen_ids = set()
         unique_items = []
         for item in all_stories:
-            item_id = item.get("id", item.get("headline", ""))
+            item_id = item.get("id", item.get("internalID", item.get("title", "")))
             if item_id and item_id not in seen_ids:
                 seen_ids.add(item_id)
                 unique_items.append(item)
-        unique_items.sort(key=lambda x: x.get("publishedAt", ""), reverse=True)
+        unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
         
         # Build Bloomberg Terminal style markdown
         lines = ["## BLOOMBERG LATEST NEWS", "---"]
         
         for item in unique_items[:20]:
-            # Parse timestamp
-            published = item.get("publishedAt", "")
-            if published:
-                time_str = published[11:16] if len(published) > 16 else ""  # Extract HH:MM from ISO format
-            else:
-                time_str = ""
+            # Parse Unix timestamp
+            published = item.get("published", 0)
+            time_str = format_timestamp(published) if published else ""
             
-            title = item.get("headline", item.get("title", ""))
+            title = item.get("title", item.get("headline", ""))
             url = item.get("url", item.get("shortURL", ""))
-            cat = item.get("primarySite", item.get("vertical", "NEWS")).upper()
+            cat = item.get("primarySite", "NEWS").upper()
             
             # Format: TIME | CATEGORY | [HEADLINE](URL)
             lines.append(f"**{time_str}** | `{cat}` | [{title}]({url})")
@@ -548,7 +552,8 @@ async def bloomberg_terminal():
         <span style="color: #00ff00; font-size: 11px;">Click READ to view full article (bypasses paywall)</span>
     </div>
     <div class="tabs">
-        <button class="tab active" onclick="loadNews('markets')">MARKETS</button>
+        <button class="tab active" onclick="loadNews('all')">ALL</button>
+        <button class="tab" onclick="loadNews('markets')">MARKETS</button>
         <button class="tab" onclick="loadNews('technology')">TECHNOLOGY</button>
         <button class="tab" onclick="loadNews('politics')">POLITICS</button>
         <button class="tab" onclick="loadNews('industries')">INDUSTRIES</button>
@@ -570,7 +575,7 @@ async def bloomberg_terminal():
     </div>
     
     <script>
-        let currentCategory = 'markets';
+        let currentCategory = 'all';
         
         async function loadNews(category) {
             currentCategory = category;
@@ -728,7 +733,7 @@ async def bloomberg_terminal():
         setInterval(() => loadNews(currentCategory), 60000);
         
         // Initial load
-        loadNews('markets');
+        loadNews('all');
     </script>
 </body>
 </html>
