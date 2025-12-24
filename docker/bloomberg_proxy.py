@@ -15,7 +15,7 @@ app.add_middleware(
 )
 
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
-RAPIDAPI_HOST = "bloomberg-finance.p.rapidapi.com"
+RAPIDAPI_HOST = "bloomberg-real-time.p.rapidapi.com"
 
 headers = {
     "x-rapidapi-host": RAPIDAPI_HOST,
@@ -115,13 +115,12 @@ def format_timestamp(ts):
         return ""
 
 @app.get("/stories/list")
-async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries")):
-    """Get stories/news by category - formatted for Bloomberg Terminal style"""
+async def get_stories_list(id: str = Query("markets", description="Category (not used - returns all latest news)")):
+    """Get stories/news - formatted for Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://{RAPIDAPI_HOST}/stories/list",
+            f"https://{RAPIDAPI_HOST}/news/list",
             headers=headers,
-            params={"id": id},
             timeout=30.0
         )
         if response.status_code != 200:
@@ -129,49 +128,63 @@ async def get_stories_list(id: str = Query("markets", description="Category: mar
         
         data = response.json()
         
-        # Format response for OpenBB table with clickable links
+        # Extract stories from all modules in the new API format
+        all_stories = []
         if data.get("status") and data.get("data"):
-            # Sort by published timestamp (newest first) and deduplicate
-            items = data["data"]
-            seen_ids = set()
-            unique_items = []
-            for item in items:
-                item_id = item.get("internalID", item.get("title"))
-                if item_id not in seen_ids:
-                    seen_ids.add(item_id)
-                    unique_items.append(item)
-            
-            # Sort by timestamp descending (newest first)
-            unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
-            
-            formatted_results = []
-            for item in unique_items[:20]:
-                formatted_results.append({
-                    "time": format_timestamp(item.get("published", 0)),
-                    "headline": item.get("title", ""),
-                    "category": item.get("primarySite", "").upper(),
-                    "url": item.get("shortURL", item.get("longURL", "")),
-                    "thumbnail": item.get("thumbnailImage", "")
-                })
-            
-            return {
-                "results": formatted_results,
-                "provider": "bloomberg",
-                "warnings": None,
-                "chart": None,
-                "extra": {"metadata": {"route": "/stories/list", "category": id}}
-            }
+            modules = data["data"].get("modules", [])
+            for module in modules:
+                stories = module.get("stories", [])
+                all_stories.extend(stories)
         
-        return {"results": [], "provider": "bloomberg"}
+        # Deduplicate by ID
+        seen_ids = set()
+        unique_items = []
+        for item in all_stories:
+            item_id = item.get("id", item.get("headline", ""))
+            if item_id and item_id not in seen_ids:
+                seen_ids.add(item_id)
+                unique_items.append(item)
+        
+        # Sort by timestamp descending (newest first)
+        unique_items.sort(key=lambda x: x.get("publishedAt", 0), reverse=True)
+        
+        formatted_results = []
+        for item in unique_items[:20]:
+            # Parse timestamp from new format
+            published = item.get("publishedAt", 0)
+            if isinstance(published, str):
+                try:
+                    from dateutil import parser
+                    dt = parser.parse(published)
+                    time_str = dt.strftime("%H:%M")
+                except:
+                    time_str = published[:5] if len(published) > 5 else ""
+            else:
+                time_str = format_timestamp(published)
+            
+            formatted_results.append({
+                "time": time_str,
+                "headline": item.get("headline", item.get("title", "")),
+                "category": item.get("primarySite", item.get("vertical", "NEWS")).upper(),
+                "url": item.get("url", item.get("shortURL", "")),
+                "thumbnail": item.get("thumbnailImage", item.get("image", ""))
+            })
+        
+        return {
+            "results": formatted_results,
+            "provider": "bloomberg",
+            "warnings": None,
+            "chart": None,
+            "extra": {"metadata": {"route": "/stories/list", "count": len(formatted_results)}}
+        }
 
 @app.get("/news/markdown")
-async def get_news_markdown(category: str = Query("markets", description="Category: markets, technology, politics")):
+async def get_news_markdown(category: str = Query("markets", description="Category (returns all latest news)")):
     """Get news formatted as markdown with clickable links - Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://{RAPIDAPI_HOST}/stories/list",
+            f"https://{RAPIDAPI_HOST}/news/list",
             headers=headers,
-            params={"id": category},
             timeout=30.0
         )
         if response.status_code != 200:
@@ -179,42 +192,52 @@ async def get_news_markdown(category: str = Query("markets", description="Catego
         
         data = response.json()
         
+        # Extract stories from all modules
+        all_stories = []
         if data.get("status") and data.get("data"):
-            # Deduplicate and sort by timestamp (newest first)
-            items = data["data"]
-            seen_ids = set()
-            unique_items = []
-            for item in items:
-                item_id = item.get("internalID", item.get("title"))
-                if item_id not in seen_ids:
-                    seen_ids.add(item_id)
-                    unique_items.append(item)
-            unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
-            
-            # Build Bloomberg Terminal style markdown
-            lines = [f"## BLOOMBERG {category.upper()} NEWS", "---"]
-            
-            for item in unique_items[:20]:
-                time_str = format_timestamp(item.get("published", 0))
-                title = item.get("title", "")
-                url = item.get("shortURL", item.get("longURL", ""))
-                cat = item.get("primarySite", "").upper()
-                
-                # Format: TIME | CATEGORY | [HEADLINE](URL)
-                lines.append(f"**{time_str}** | `{cat}` | [{title}]({url})")
-                lines.append("")
-            
-            markdown_content = "\n".join(lines)
-            
-            return {
-                "results": [{"markdown_content": markdown_content}],
-                "provider": "bloomberg",
-                "warnings": None,
-                "chart": None,
-                "extra": {"metadata": {"route": "/news/markdown", "category": category}}
-            }
+            modules = data["data"].get("modules", [])
+            for module in modules:
+                stories = module.get("stories", [])
+                all_stories.extend(stories)
         
-        return {"results": [], "provider": "bloomberg"}
+        # Deduplicate and sort
+        seen_ids = set()
+        unique_items = []
+        for item in all_stories:
+            item_id = item.get("id", item.get("headline", ""))
+            if item_id and item_id not in seen_ids:
+                seen_ids.add(item_id)
+                unique_items.append(item)
+        unique_items.sort(key=lambda x: x.get("publishedAt", ""), reverse=True)
+        
+        # Build Bloomberg Terminal style markdown
+        lines = ["## BLOOMBERG LATEST NEWS", "---"]
+        
+        for item in unique_items[:20]:
+            # Parse timestamp
+            published = item.get("publishedAt", "")
+            if published:
+                time_str = published[11:16] if len(published) > 16 else ""  # Extract HH:MM from ISO format
+            else:
+                time_str = ""
+            
+            title = item.get("headline", item.get("title", ""))
+            url = item.get("url", item.get("shortURL", ""))
+            cat = item.get("primarySite", item.get("vertical", "NEWS")).upper()
+            
+            # Format: TIME | CATEGORY | [HEADLINE](URL)
+            lines.append(f"**{time_str}** | `{cat}` | [{title}]({url})")
+            lines.append("")
+        
+        markdown_content = "\n".join(lines)
+        
+        return {
+            "results": [{"markdown_content": markdown_content}],
+            "provider": "bloomberg",
+            "warnings": None,
+            "chart": None,
+            "extra": {"metadata": {"route": "/news/markdown", "count": len(unique_items)}}
+        }
 
 @app.get("/news/iframe")
 async def get_news_iframe():
