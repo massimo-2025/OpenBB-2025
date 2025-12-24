@@ -1,8 +1,5 @@
 {
-  "credentials": {
-    "benzinga_api_key": "bz.LVYLDH3JMWDPOIRFWMGNKAHRLDE5VYQ3",
-    "seeking_alpha_api_key": "d052212c02msha7b23c1f1689079p12c98ajsnf7f0e6cf94a5"
-  },
+  "credentials": {},
   "defaults": {
     "commands": {}
   },

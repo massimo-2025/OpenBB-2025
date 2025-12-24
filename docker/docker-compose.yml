@@ -16,6 +16,8 @@ services:
       - OPENBB_API_HOST=0.0.0.0
       - OPENBB_API_PORT=6900
       - OPENBB_PAT=${OPENBB_PAT:-}
+      - OPENBB_BENZINGA_API_KEY=${BENZINGA_API_KEY:-}
+      - OPENBB_SEEKING_ALPHA_API_KEY=${SEEKING_ALPHA_API_KEY:-}
     networks:
       - openbb-network
     healthcheck:

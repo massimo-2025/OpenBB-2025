@@ -60,7 +60,8 @@ fi
 SSH_KEY_FINGERPRINT=$(ssh-keygen -l -E md5 -f "$SSH_KEY_PATH.pub" | awk '{print $2}' | sed 's/MD5://')
 if ! doctl compute ssh-key list | grep -q "$SSH_KEY_FINGERPRINT"; then
     echo "Adding SSH key to DigitalOcean..."
-    doctl compute ssh-key create openbb-deploy-key --public-key-file "$SSH_KEY_PATH.pub"
+    SSH_KEY_CONTENT=$(cat "$SSH_KEY_PATH.pub")
+    doctl compute ssh-key create openbb-deploy-key --public-key "$SSH_KEY_CONTENT"
 fi
 
 SSH_KEY_ID=$(doctl compute ssh-key list --format ID,FingerPrint --no-header | grep "$SSH_KEY_FINGERPRINT" | awk '{print $1}')
