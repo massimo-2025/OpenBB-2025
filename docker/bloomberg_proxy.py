@@ -32,10 +32,10 @@ WIDGETS_CONFIG = {
         "widgetId": "bloomberg_news_markets",
         "params": [
             {
-                "name": "id",
+                "paramName": "id",
                 "label": "Category",
-                "type": "text",
-                "default": "markets",
+                "type": "form",
+                "value": "markets",
                 "description": "News category: markets, technology, politics, industries"
             }
         ],
@@ -62,10 +62,10 @@ WIDGETS_CONFIG = {
         "widgetId": "bloomberg_news_region",
         "params": [
             {
-                "name": "id",
+                "paramName": "id",
                 "label": "Region",
-                "type": "text",
-                "default": "us",
+                "type": "form",
+                "value": "us",
                 "description": "Region: us, europe, asia"
             }
         ],
@@ -91,10 +91,10 @@ WIDGETS_CONFIG = {
         "widgetId": "bloomberg_market_movers",
         "params": [
             {
-                "name": "id",
+                "paramName": "id",
                 "label": "Market",
-                "type": "text",
-                "default": "us",
+                "type": "form",
+                "value": "us",
                 "description": "Market: us, europe, asia"
             }
         ],
