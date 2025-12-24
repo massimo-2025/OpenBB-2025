@@ -8,8 +8,8 @@ services:
     ports:
       - "6900:6900"
     volumes:
-      - openbb-data:/root/.openbb_platform
-      - ../config:/app/config:ro
+      - openbb-data:/root/.openbb_platform/data
+      - ../config/user_settings.json:/root/.openbb_platform/user_settings.json:ro
     environment:
       - OPENBB_API_HOST=0.0.0.0
       - OPENBB_API_PORT=6900

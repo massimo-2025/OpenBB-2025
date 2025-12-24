@@ -32,9 +32,6 @@ RUN pip install openbb openbb-cli openbb-platform-api
 # Create OpenBB config directory
 RUN mkdir -p /root/.openbb_platform
 
-# Copy configuration files
-COPY config/user_settings.json /root/.openbb_platform/user_settings.json
-
 # Expose the API port
 EXPOSE 6900
 
