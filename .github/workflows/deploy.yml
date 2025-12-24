@@ -20,9 +20,32 @@ jobs:
           script: |
             cd /opt/openbb
             git pull origin main
+            
+            # Inject API keys into config file
+            cat > config/user_settings.json << EOF
+            {
+              "credentials": {
+                "benzinga_api_key": "${BENZINGA_API_KEY}",
+                "seeking_alpha_api_key": "${SEEKING_ALPHA_API_KEY}"
+              },
+              "defaults": {
+                "commands": {}
+              },
+              "preferences": {
+                "data_directory": "/root/.openbb_platform/data",
+                "export_directory": "/root/.openbb_platform/exports",
+                "cache_directory": "/root/.openbb_platform/cache",
+                "user_styles_directory": "/root/.openbb_platform/styles",
+                "charting_extension": "openbb_charting",
+                "table_style": "dark",
+                "request_timeout": 30,
+                "metadata": true,
+                "output_type": "OBBject"
+              }
+            }
+            EOF
+            
             cd docker
-            export BENZINGA_API_KEY="${BENZINGA_API_KEY}"
-            export SEEKING_ALPHA_API_KEY="${SEEKING_ALPHA_API_KEY}"
             export RAPIDAPI_KEY="${RAPIDAPI_KEY}"
             docker compose down
             docker compose up -d --build
