@@ -27,7 +27,7 @@ WORKDIR /app
 RUN pip install --upgrade pip
 
 # Install OpenBB Platform
-RUN pip install openbb openbb-cli
+RUN pip install openbb openbb-cli openbb-platform-api
 
 # Create OpenBB config directory
 RUN mkdir -p /root/.openbb_platform
@@ -43,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:6900/api/v1/health || exit 1
 
 # Start OpenBB API server
-CMD ["python", "-c", "from openbb import obb; obb.account.login(); import uvicorn; uvicorn.run('openbb_core.api.rest_api:app', host='0.0.0.0', port=6900)"]
+CMD ["openbb-api", "--host", "0.0.0.0", "--port", "6900"]
