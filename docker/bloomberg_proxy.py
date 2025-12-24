@@ -118,24 +118,34 @@ def format_timestamp(ts):
 async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries")):
     """Get stories/news by category - formatted for Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
-        # Fetch 2 pages to get 20 items
-        all_items = []
-        for page in [1, 2]:
-            response = await client.get(
-                f"https://{RAPIDAPI_HOST}/stories/list",
-                headers=headers,
-                params={"id": id, "page": page},
-                timeout=30.0
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("status") and data.get("data"):
-                    all_items.extend(data["data"])
+        response = await client.get(
+            f"https://{RAPIDAPI_HOST}/stories/list",
+            headers=headers,
+            params={"id": id},
+            timeout=30.0
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        
+        data = response.json()
         
         # Format response for OpenBB table with clickable links
-        if all_items:
+        if data.get("status") and data.get("data"):
+            # Sort by published timestamp (newest first) and deduplicate
+            items = data["data"]
+            seen_ids = set()
+            unique_items = []
+            for item in items:
+                item_id = item.get("internalID", item.get("title"))
+                if item_id not in seen_ids:
+                    seen_ids.add(item_id)
+                    unique_items.append(item)
+            
+            # Sort by timestamp descending (newest first)
+            unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
+            
             formatted_results = []
-            for item in all_items[:20]:  # Limit to 20
+            for item in unique_items[:20]:
                 formatted_results.append({
                     "time": format_timestamp(item.get("published", 0)),
                     "headline": item.get("title", ""),
@@ -158,25 +168,33 @@ async def get_stories_list(id: str = Query("markets", description="Category: mar
 async def get_news_markdown(category: str = Query("markets", description="Category: markets, technology, politics")):
     """Get news formatted as markdown with clickable links - Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
-        # Fetch 2 pages to get 20 items
-        all_items = []
-        for page in [1, 2]:
-            response = await client.get(
-                f"https://{RAPIDAPI_HOST}/stories/list",
-                headers=headers,
-                params={"id": category, "page": page},
-                timeout=30.0
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("status") and data.get("data"):
-                    all_items.extend(data["data"])
+        response = await client.get(
+            f"https://{RAPIDAPI_HOST}/stories/list",
+            headers=headers,
+            params={"id": category},
+            timeout=30.0
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
         
-        if all_items:
+        data = response.json()
+        
+        if data.get("status") and data.get("data"):
+            # Deduplicate and sort by timestamp (newest first)
+            items = data["data"]
+            seen_ids = set()
+            unique_items = []
+            for item in items:
+                item_id = item.get("internalID", item.get("title"))
+                if item_id not in seen_ids:
+                    seen_ids.add(item_id)
+                    unique_items.append(item)
+            unique_items.sort(key=lambda x: x.get("published", 0), reverse=True)
+            
             # Build Bloomberg Terminal style markdown
             lines = [f"## BLOOMBERG {category.upper()} NEWS", "---"]
             
-            for item in all_items[:20]:  # Limit to 20 items
+            for item in unique_items[:20]:
                 time_str = format_timestamp(item.get("published", 0))
                 title = item.get("title", "")
                 url = item.get("shortURL", item.get("longURL", ""))
