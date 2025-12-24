@@ -118,21 +118,24 @@ def format_timestamp(ts):
 async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries")):
     """Get stories/news by category - formatted for Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://{RAPIDAPI_HOST}/stories/list",
-            headers=headers,
-            params={"id": id},
-            timeout=30.0
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        
-        data = response.json()
+        # Fetch 2 pages to get 20 items
+        all_items = []
+        for page in [1, 2]:
+            response = await client.get(
+                f"https://{RAPIDAPI_HOST}/stories/list",
+                headers=headers,
+                params={"id": id, "page": page},
+                timeout=30.0
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") and data.get("data"):
+                    all_items.extend(data["data"])
         
         # Format response for OpenBB table with clickable links
-        if data.get("status") and data.get("data"):
+        if all_items:
             formatted_results = []
-            for item in data["data"]:
+            for item in all_items[:20]:  # Limit to 20
                 formatted_results.append({
                     "time": format_timestamp(item.get("published", 0)),
                     "headline": item.get("title", ""),
@@ -149,28 +152,31 @@ async def get_stories_list(id: str = Query("markets", description="Category: mar
                 "extra": {"metadata": {"route": "/stories/list", "category": id}}
             }
         
-        return data
+        return {"results": [], "provider": "bloomberg"}
 
 @app.get("/news/markdown")
 async def get_news_markdown(category: str = Query("markets", description="Category: markets, technology, politics")):
     """Get news formatted as markdown with clickable links - Bloomberg Terminal style"""
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://{RAPIDAPI_HOST}/stories/list",
-            headers=headers,
-            params={"id": category},
-            timeout=30.0
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+        # Fetch 2 pages to get 20 items
+        all_items = []
+        for page in [1, 2]:
+            response = await client.get(
+                f"https://{RAPIDAPI_HOST}/stories/list",
+                headers=headers,
+                params={"id": category, "page": page},
+                timeout=30.0
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") and data.get("data"):
+                    all_items.extend(data["data"])
         
-        data = response.json()
-        
-        if data.get("status") and data.get("data"):
+        if all_items:
             # Build Bloomberg Terminal style markdown
             lines = [f"## BLOOMBERG {category.upper()} NEWS", "---"]
             
-            for item in data["data"][:20]:  # Limit to 20 items
+            for item in all_items[:20]:  # Limit to 20 items
                 time_str = format_timestamp(item.get("published", 0))
                 title = item.get("title", "")
                 url = item.get("shortURL", item.get("longURL", ""))
