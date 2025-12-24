@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     git \
-    libwebkit2gtk-4.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (required for some OpenBB dependencies)
