@@ -35,6 +35,7 @@ services:
       - "6901:6901"
     environment:
       - RAPIDAPI_KEY=${RAPIDAPI_KEY:-}
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN:-}
     networks:
       - openbb-network
     healthcheck:

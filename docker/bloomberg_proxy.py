@@ -16,6 +16,7 @@ app.add_middleware(
 
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 RAPIDAPI_HOST = "bloomberg-real-time.p.rapidapi.com"
+APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "")
 
 headers = {
     "x-rapidapi-host": RAPIDAPI_HOST,
@@ -257,14 +258,62 @@ async def get_news_iframe():
         "extra": {"metadata": {"route": "/news/iframe"}}
     }
 
+@app.get("/article")
+async def get_full_article(url: str = Query(..., description="Bloomberg article URL")):
+    """Fetch full article content via Apify Bloomberg scraper"""
+    if not APIFY_API_TOKEN:
+        raise HTTPException(status_code=500, detail="Apify API token not configured")
+    
+    if not url.startswith("https://www.bloomberg.com"):
+        raise HTTPException(status_code=400, detail="Only Bloomberg URLs are supported")
+    
+    async with httpx.AsyncClient() as client:
+        # Call Apify Bloomberg scraper synchronously
+        apify_url = f"https://api.apify.com/v2/acts/romy~bloomberg-news-scraper/run-sync-get-dataset-items?token={APIFY_API_TOKEN}"
+        
+        try:
+            response = await client.post(
+                apify_url,
+                json={"url": url},
+                timeout=120.0  # Apify can take time to scrape
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=f"Apify error: {response.text}")
+            
+            data = response.json()
+            
+            if data and len(data) > 0:
+                article = data[0]
+                return {
+                    "success": True,
+                    "article": {
+                        "title": article.get("title", ""),
+                        "subtitle": article.get("subtitle", ""),
+                        "author": article.get("author", ""),
+                        "date": article.get("date", ""),
+                        "content": article.get("content", ""),
+                        "images": article.get("images", []),
+                        "url": url
+                    }
+                }
+            else:
+                return {"success": False, "error": "No content returned"}
+                
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="Request timed out - article may be too long")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/terminal", response_class=HTMLResponse)
 async def bloomberg_terminal():
-    """Full Bloomberg Terminal HTML page"""
+    """Full Bloomberg Terminal HTML page with article modal"""
     html = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>Bloomberg Terminal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -279,6 +328,9 @@ async def bloomberg_terminal():
             padding: 10px;
             border-bottom: 2px solid #ff9900;
             margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .header h1 {
             color: #ff9900;
@@ -313,6 +365,7 @@ async def bloomberg_terminal():
             cursor: pointer;
             display: flex;
             gap: 10px;
+            align-items: center;
         }
         .news-item:hover {
             background: #1a1a2e;
@@ -330,27 +383,169 @@ async def bloomberg_terminal():
             color: #ff9900;
             flex: 1;
         }
-        .headline a {
-            color: #ff9900;
-            text-decoration: none;
+        .read-btn {
+            background: #ff9900;
+            color: #000;
+            border: none;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
         }
-        .headline a:hover {
-            text-decoration: underline;
-            color: #ffcc00;
+        .read-btn:hover {
+            background: #ffcc00;
         }
         .loading {
             color: #00ff00;
             padding: 20px;
             text-align: center;
         }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        .modal.active {
+            display: block;
+        }
+        .modal-content {
+            background: #1a1a2e;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 30px;
+            border: 2px solid #ff9900;
+            color: #e0e0e0;
+            font-family: Georgia, serif;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ff9900;
+        }
+        .modal-title {
+            color: #ff9900;
+            font-size: 28px;
+            font-weight: bold;
+            font-family: Georgia, serif;
+            line-height: 1.3;
+            flex: 1;
+        }
+        .modal-subtitle {
+            color: #aaa;
+            font-size: 18px;
+            margin-top: 10px;
+            font-style: italic;
+        }
+        .modal-meta {
+            color: #00ffff;
+            font-size: 14px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .modal-btn {
+            background: #ff9900;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .modal-btn:hover {
+            background: #ffcc00;
+        }
+        .modal-btn.close {
+            background: #666;
+            color: #fff;
+        }
+        .modal-btn.close:hover {
+            background: #888;
+        }
+        .article-content {
+            color: #e0e0e0;
+        }
+        .article-content p {
+            margin-bottom: 18px;
+        }
+        .article-content img {
+            max-width: 100%;
+            height: auto;
+            margin: 20px 0;
+            border: 1px solid #333;
+        }
+        .article-image {
+            text-align: center;
+            margin: 25px 0;
+        }
+        .article-image img {
+            max-width: 100%;
+            border: 1px solid #ff9900;
+        }
+        .article-image .caption {
+            color: #888;
+            font-size: 13px;
+            margin-top: 8px;
+            font-style: italic;
+        }
+        .loading-article {
+            text-align: center;
+            padding: 60px;
+            color: #00ff00;
+            font-size: 18px;
+        }
+        .loading-article .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #ff9900;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error-msg {
+            color: #ff4444;
+            text-align: center;
+            padding: 40px;
+        }
+        
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1a1a2e; }
         ::-webkit-scrollbar-thumb { background: #ff9900; }
+        
+        @media print {
+            .modal-buttons { display: none; }
+            .modal { background: white; }
+            .modal-content { border: none; background: white; color: black; }
+            .modal-title { color: black; }
+            .article-content { color: black; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>BLOOMBERG TERMINAL - NEWS</h1>
+        <span style="color: #00ff00; font-size: 11px;">Click READ to view full article (bypasses paywall)</span>
     </div>
     <div class="tabs">
         <button class="tab active" onclick="loadNews('markets')">MARKETS</button>
@@ -362,6 +557,18 @@ async def bloomberg_terminal():
     <div class="news-container" id="news">
         <div class="loading">Loading...</div>
     </div>
+    
+    <!-- Article Modal -->
+    <div class="modal" id="articleModal">
+        <div class="modal-content" id="modalContent">
+            <div class="loading-article">
+                <div class="spinner"></div>
+                <p>Loading full article...</p>
+                <p style="font-size: 12px; color: #888;">This may take 30-60 seconds</p>
+            </div>
+        </div>
+    </div>
+    
     <script>
         let currentCategory = 'markets';
         
@@ -379,11 +586,13 @@ async def bloomberg_terminal():
                 if (data.results) {
                     let html = '';
                     data.results.forEach(item => {
+                        const encodedUrl = encodeURIComponent(item.url);
                         html += `
-                            <div class="news-item" onclick="window.open('${item.url}', '_blank')">
+                            <div class="news-item">
                                 <span class="time">${item.time}</span>
                                 <span class="category">${item.category}</span>
-                                <span class="headline"><a href="${item.url}" target="_blank">${item.headline}</a></span>
+                                <span class="headline">${item.headline}</span>
+                                <button class="read-btn" onclick="openArticle('${encodedUrl}', event)">READ</button>
                             </div>
                         `;
                     });
@@ -393,6 +602,127 @@ async def bloomberg_terminal():
                 document.getElementById('news').innerHTML = '<div class="loading">Error loading news</div>';
             }
         }
+        
+        async function openArticle(encodedUrl, event) {
+            event.stopPropagation();
+            const url = decodeURIComponent(encodedUrl);
+            const modal = document.getElementById('articleModal');
+            const content = document.getElementById('modalContent');
+            
+            modal.classList.add('active');
+            content.innerHTML = `
+                <div class="loading-article">
+                    <div class="spinner"></div>
+                    <p>Loading full article...</p>
+                    <p style="font-size: 12px; color: #888;">This may take 30-60 seconds (bypassing paywall)</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch('/bloomberg/article?url=' + encodedUrl);
+                const data = await response.json();
+                
+                if (data.success && data.article) {
+                    const article = data.article;
+                    let imagesHtml = '';
+                    
+                    if (article.images && article.images.length > 0) {
+                        article.images.forEach(img => {
+                            imagesHtml += `
+                                <div class="article-image">
+                                    <img src="${img.url || img}" alt="${img.caption || 'Article image'}" />
+                                    ${img.caption ? `<div class="caption">${img.caption}</div>` : ''}
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    content.innerHTML = `
+                        <div class="modal-header">
+                            <div>
+                                <div class="modal-title">${article.title}</div>
+                                ${article.subtitle ? `<div class="modal-subtitle">${article.subtitle}</div>` : ''}
+                            </div>
+                            <div class="modal-buttons">
+                                <button class="modal-btn" onclick="savePDF()">SAVE PDF</button>
+                                <button class="modal-btn" onclick="window.open('${url}', '_blank')">ORIGINAL</button>
+                                <button class="modal-btn close" onclick="closeModal()">CLOSE</button>
+                            </div>
+                        </div>
+                        <div class="modal-meta">
+                            ${article.author ? `By ${article.author}` : ''} 
+                            ${article.date ? ` | ${article.date}` : ''}
+                        </div>
+                        ${imagesHtml}
+                        <div class="article-content" id="articleBody">
+                            ${formatContent(article.content)}
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div class="error-msg">
+                            <h2>Could not load article</h2>
+                            <p>${data.error || 'Unknown error'}</p>
+                            <br>
+                            <button class="modal-btn" onclick="window.open('${url}', '_blank')">Open Original</button>
+                            <button class="modal-btn close" onclick="closeModal()">Close</button>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                content.innerHTML = `
+                    <div class="error-msg">
+                        <h2>Error loading article</h2>
+                        <p>${err.message}</p>
+                        <br>
+                        <button class="modal-btn" onclick="window.open('${url}', '_blank')">Open Original</button>
+                        <button class="modal-btn close" onclick="closeModal()">Close</button>
+                    </div>
+                `;
+            }
+        }
+        
+        function formatContent(content) {
+            if (!content) return '<p>No content available</p>';
+            // Split by double newlines to create paragraphs
+            const paragraphs = content.split(/\\n\\n|\\r\\n\\r\\n/);
+            return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+        }
+        
+        function closeModal() {
+            document.getElementById('articleModal').classList.remove('active');
+        }
+        
+        function savePDF() {
+            const element = document.getElementById('modalContent');
+            const title = element.querySelector('.modal-title')?.textContent || 'Bloomberg Article';
+            
+            const opt = {
+                margin: 10,
+                filename: title.substring(0, 50).replace(/[^a-z0-9]/gi, '_') + '.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            // Hide buttons temporarily
+            const buttons = element.querySelector('.modal-buttons');
+            if (buttons) buttons.style.display = 'none';
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                if (buttons) buttons.style.display = 'flex';
+            });
+        }
+        
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+        
+        // Close modal on background click
+        document.getElementById('articleModal').addEventListener('click', (e) => {
+            if (e.target.id === 'articleModal') closeModal();
+        });
         
         // Auto-refresh every 60 seconds
         setInterval(() => loadNews(currentCategory), 60000);
