@@ -24,39 +24,40 @@ headers = {
 async def health():
     return {"status": "ok"}
 
-@app.get("/news/trending")
-async def get_trending_news():
-    """Get trending news from Bloomberg"""
+@app.get("/stories/list")
+async def get_stories_list(id: str = Query("markets", description="Category: markets, technology, politics, industries, etc.")):
+    """Get stories/news by category"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://{RAPIDAPI_HOST}/news/trending",
+            f"https://{RAPIDAPI_HOST}/stories/list",
             headers=headers,
+            params={"id": id},
             timeout=30.0
         )
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
 
-@app.get("/news/stock")
-async def get_stock_news(symbol: str = Query(..., description="Stock symbol e.g. AAPL")):
-    """Get news for a specific stock"""
+@app.get("/news/list-by-region")
+async def get_news_by_region(id: str = Query("us", description="Region: us, europe, asia, etc.")):
+    """Get news by region"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://{RAPIDAPI_HOST}/news/stock",
+            f"https://{RAPIDAPI_HOST}/news/list-by-region",
             headers=headers,
-            params={"symbol": symbol},
+            params={"id": id},
             timeout=30.0
         )
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
 
-@app.get("/news/list")
-async def get_news_list(id: str = Query("markets", description="Category: markets, technology, politics, etc.")):
-    """Get news by category"""
+@app.get("/market/get-movers")
+async def get_market_movers(id: str = Query("us", description="Market: us, europe, asia, etc.")):
+    """Get market movers"""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://{RAPIDAPI_HOST}/news/list",
+            f"https://{RAPIDAPI_HOST}/market/get-movers",
             headers=headers,
             params={"id": id},
             timeout=30.0
