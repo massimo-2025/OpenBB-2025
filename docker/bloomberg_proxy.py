@@ -962,13 +962,25 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
     
     try:
         async with httpx.AsyncClient() as client:
-            # Get news for the symbol using slug (lowercase symbol)
-            news_response = await client.get(
-                f"https://{SEEKING_ALPHA_HOST}/news/list",
-                headers=sa_headers,
-                params={"id": symbol.lower(), "size": 30},
-                timeout=30.0
-            )
+            import re
+            
+            # Check if it's a category request or symbol request
+            if symbol.lower() in ["latest", "market-news", "all"]:
+                # Get general market news
+                news_response = await client.get(
+                    f"https://{SEEKING_ALPHA_HOST}/news/v2/list",
+                    headers=sa_headers,
+                    params={"size": 40},
+                    timeout=30.0
+                )
+            else:
+                # Get news for specific symbol
+                news_response = await client.get(
+                    f"https://{SEEKING_ALPHA_HOST}/news/list",
+                    headers=sa_headers,
+                    params={"id": symbol.lower(), "size": 30},
+                    timeout=30.0
+                )
             
             if news_response.status_code != 200:
                 return {"results": [], "error": f"Failed to get news: {news_response.status_code}"}
@@ -976,21 +988,27 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
             news_data = news_response.json()
             articles = news_data.get("data", [])
             
+            # Get included tickers for symbol lookup
+            included = {item["id"]: item.get("attributes", {}).get("name", "") 
+                       for item in news_data.get("included", []) if item.get("type") == "tag"}
+            
             results = []
             for article in articles:
                 attrs = article.get("attributes", {})
                 # Extract text content, strip HTML tags for display
                 content = attrs.get("content", "")
-                # Simple HTML strip
-                import re
                 clean_content = re.sub(r'<[^>]+>', '', content)
+                
+                # Get related symbols
+                tickers = article.get("relationships", {}).get("primaryTickers", {}).get("data", [])
+                symbols = [included.get(t.get("id"), "") for t in tickers[:3] if included.get(t.get("id"))]
                 
                 results.append({
                     "title": attrs.get("title", ""),
                     "date": attrs.get("publishOn", ""),
                     "text": clean_content,
-                    "url": f"https://seekingalpha.com/news/{article.get('id', '')}",
-                    "symbols": [symbol.upper()]
+                    "url": f"https://seekingalpha.com{article.get('links', {}).get('self', '')}",
+                    "symbols": symbols if symbols else [symbol.upper()] if symbol.lower() not in ["latest", "market-news", "all"] else []
                 })
             
             return {"results": results}
@@ -1054,6 +1072,30 @@ async def seekingalpha_terminal():
         .search-box button:hover {
             background: #00ffcc;
         }
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .tab {
+            background: #252540;
+            color: #00d4aa;
+            border: 1px solid #00d4aa;
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            background: #353560;
+        }
+        .tab.active {
+            background: #00d4aa;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
         .news-item {
             border-bottom: 1px solid #333;
             cursor: pointer;
@@ -1081,13 +1123,15 @@ async def seekingalpha_terminal():
         }
         .news-body {
             display: none;
-            padding: 15px 20px 20px 115px;
-            color: #ccc;
-            line-height: 1.6;
-            font-size: 13px;
+            padding: 20px 25px 25px 120px;
+            color: #ddd;
+            line-height: 1.8;
+            font-size: 15px;
             background: #0f0f1a;
             border-left: 3px solid #00d4aa;
             margin-left: 5px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         .news-body.expanded {
             display: block;
@@ -1142,12 +1186,16 @@ async def seekingalpha_terminal():
     </div>
     
     <div class="search-box">
-        <input type="text" id="symbolInput" placeholder="Enter symbol (e.g., AAPL)" value="AAPL">
+        <input type="text" id="symbolInput" placeholder="Enter symbol (e.g., AAPL)" value="latest">
         <button onclick="loadNews()">SEARCH</button>
-        <button onclick="loadNews('TSLA')">TSLA</button>
-        <button onclick="loadNews('NVDA')">NVDA</button>
-        <button onclick="loadNews('MSFT')">MSFT</button>
-        <button onclick="loadNews('AMZN')">AMZN</button>
+    </div>
+    <div class="tabs">
+        <button class="tab active" onclick="loadNews('latest')">LATEST NEWS</button>
+        <button class="tab" onclick="loadNews('AAPL')">AAPL</button>
+        <button class="tab" onclick="loadNews('TSLA')">TSLA</button>
+        <button class="tab" onclick="loadNews('NVDA')">NVDA</button>
+        <button class="tab" onclick="loadNews('MSFT')">MSFT</button>
+        <button class="tab" onclick="loadNews('BTC-USD')">CRYPTO</button>
     </div>
     
     <div id="newsList">
@@ -1155,17 +1203,28 @@ async def seekingalpha_terminal():
     </div>
     
     <script>
-        let currentSymbol = 'AAPL';
+        let currentSymbol = 'latest';
         
         async function loadNews(symbol) {
             if (symbol) {
                 currentSymbol = symbol;
                 document.getElementById('symbolInput').value = symbol;
             } else {
-                currentSymbol = document.getElementById('symbolInput').value.toUpperCase() || 'AAPL';
+                currentSymbol = document.getElementById('symbolInput').value || 'latest';
             }
             
-            document.getElementById('newsList').innerHTML = '<div class="loading">Loading ' + currentSymbol + ' news...</div>';
+            // Update active tab
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => {
+                if (t.textContent === currentSymbol.toUpperCase() || 
+                    (currentSymbol === 'latest' && t.textContent === 'LATEST NEWS') ||
+                    (currentSymbol === 'BTC-USD' && t.textContent === 'CRYPTO')) {
+                    t.classList.add('active');
+                }
+            });
+            
+            const displayName = currentSymbol === 'latest' ? 'Latest Market' : currentSymbol.toUpperCase();
+            document.getElementById('newsList').innerHTML = '<div class="loading">Loading ' + displayName + ' news...</div>';
             
             try {
                 const response = await fetch('/seekingalpha/news/' + currentSymbol);
@@ -1259,11 +1318,11 @@ async def seekingalpha_terminal():
             if (e.key === 'Enter') loadNews();
         });
         
-        // Initial load
-        loadNews();
+        // Initial load - latest news
+        loadNews('latest');
         
         // Refresh every 2 minutes
-        setInterval(() => loadNews(), 120000);
+        setInterval(() => loadNews(currentSymbol), 120000);
     </script>
 </body>
 </html>
