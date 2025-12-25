@@ -753,6 +753,204 @@ async def get_trending_audios():
             raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
 
+@app.get("/benzinga/terminal", response_class=HTMLResponse)
+async def benzinga_terminal():
+    """Benzinga News Terminal - Clean expandable news feed"""
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BENZINGA NEWS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #ff6600;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            padding: 15px;
+        }
+        .header {
+            border-bottom: 2px solid #ff6600;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 {
+            color: #ff6600;
+            font-size: 24px;
+            letter-spacing: 3px;
+        }
+        .header span {
+            color: #888;
+            font-size: 11px;
+        }
+        .news-item {
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .news-item:hover {
+            background: #1a1a1a;
+        }
+        .news-header {
+            display: flex;
+            padding: 10px 5px;
+            align-items: center;
+        }
+        .news-date {
+            color: #00ff00;
+            min-width: 110px;
+            font-size: 12px;
+        }
+        .news-title {
+            color: #ff6600;
+            flex: 1;
+        }
+        .news-title:hover {
+            color: #ffaa00;
+        }
+        .news-body {
+            display: none;
+            padding: 15px 20px 20px 115px;
+            color: #ccc;
+            line-height: 1.6;
+            font-size: 13px;
+            background: #111;
+            border-left: 3px solid #ff6600;
+            margin-left: 5px;
+        }
+        .news-body.expanded {
+            display: block;
+        }
+        .news-body a {
+            color: #ff6600;
+            text-decoration: none;
+        }
+        .news-body a:hover {
+            text-decoration: underline;
+        }
+        .loading {
+            color: #888;
+            text-align: center;
+            padding: 50px;
+        }
+        .expand-icon {
+            color: #666;
+            margin-right: 10px;
+            font-size: 10px;
+        }
+        .news-item.active .expand-icon {
+            color: #ff6600;
+        }
+        .original-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 5px 15px;
+            background: #ff6600;
+            color: #000;
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .original-link:hover {
+            background: #ffaa00;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>BENZINGA NEWS</h1>
+        <span>Real-time financial news | Click headline to expand/collapse</span>
+    </div>
+    
+    <div id="newsList">
+        <div class="loading">Loading news...</div>
+    </div>
+    
+    <script>
+        async function loadNews() {
+            try {
+                const response = await fetch('http://localhost:6900/api/v1/news/world?provider=benzinga&limit=30');
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    renderNews(data.results);
+                } else {
+                    document.getElementById('newsList').innerHTML = '<div class="loading">No news available</div>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('newsList').innerHTML = '<div class="loading">Error loading news: ' + error.message + '</div>';
+            }
+        }
+        
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const day = date.getDate().toString().padStart(2, '0');
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = months[date.getMonth()];
+            const hours = date.getHours().toString().padStart(2, '0');
+            const mins = date.getMinutes().toString().padStart(2, '0');
+            return `${day}-${month};${hours}:${mins}`;
+        }
+        
+        function renderNews(articles) {
+            const container = document.getElementById('newsList');
+            container.innerHTML = '';
+            
+            articles.forEach((article, index) => {
+                const item = document.createElement('div');
+                item.className = 'news-item';
+                item.id = 'news-' + index;
+                
+                const dateStr = formatDate(article.date || article.published);
+                const title = article.title || 'No title';
+                const body = article.text || article.body || article.content || 'No content available';
+                const url = article.url || article.link || '#';
+                
+                item.innerHTML = `
+                    <div class="news-header" onclick="toggleBody(${index})">
+                        <span class="expand-icon">▶</span>
+                        <span class="news-date">${dateStr}</span>
+                        <span class="news-title">${title}</span>
+                    </div>
+                    <div class="news-body" id="body-${index}">
+                        ${body}
+                        <br><a href="${url}" target="_blank" class="original-link">OPEN ORIGINAL</a>
+                    </div>
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+        
+        function toggleBody(index) {
+            const body = document.getElementById('body-' + index);
+            const item = document.getElementById('news-' + index);
+            const icon = item.querySelector('.expand-icon');
+            
+            if (body.classList.contains('expanded')) {
+                body.classList.remove('expanded');
+                item.classList.remove('active');
+                icon.textContent = '▶';
+            } else {
+                body.classList.add('expanded');
+                item.classList.add('active');
+                icon.textContent = '▼';
+            }
+        }
+        
+        // Initial load
+        loadNews();
+        
+        // Refresh every 2 minutes
+        setInterval(loadNews, 120000);
+    </script>
+</body>
+</html>
+"""
+    return html
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=6901)
