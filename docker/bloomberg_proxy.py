@@ -1192,6 +1192,12 @@ async def seekingalpha_terminal():
             return day + '-' + month + ';' + hours + ':' + mins;
         }
         
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         function renderNews(articles) {
             const container = document.getElementById('newsList');
             container.innerHTML = '';
@@ -1202,27 +1208,32 @@ async def seekingalpha_terminal():
                 item.id = 'news-' + index;
                 
                 const dateStr = formatDate(article.date || article.published);
-                const title = article.title || 'No title';
-                const body = article.text || article.body || article.content || 'No content available';
+                const title = escapeHtml(article.title || 'No title');
+                const body = escapeHtml(article.text || article.body || article.content || 'No content available');
                 const url = article.url || article.link || '#';
                 const symbols = article.symbols || [];
                 
                 let symbolTags = '';
                 if (symbols.length > 0) {
-                    symbolTags = symbols.slice(0, 3).map(s => '<span class="symbol-tag">' + s + '</span>').join('');
+                    symbolTags = symbols.slice(0, 3).map(s => '<span class="symbol-tag">' + escapeHtml(s) + '</span>').join('');
                 }
                 
-                item.innerHTML = 
-                    '<div class="news-header" onclick="toggleBody(' + index + ')">' +
-                        '<span class="expand-icon">▶</span>' +
-                        '<span class="news-date">' + dateStr + '</span>' +
-                        '<span class="news-title">' + title + symbolTags + '</span>' +
-                    '</div>' +
-                    '<div class="news-body" id="body-' + index + '">' +
-                        body +
-                        '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>' +
-                    '</div>';
+                // Create elements properly to avoid HTML injection issues
+                const header = document.createElement('div');
+                header.className = 'news-header';
+                header.onclick = function() { toggleBody(index); };
+                header.innerHTML = '<span class="expand-icon">▶</span>' +
+                    '<span class="news-date">' + dateStr + '</span>' +
+                    '<span class="news-title">' + title + symbolTags + '</span>';
                 
+                const bodyDiv = document.createElement('div');
+                bodyDiv.className = 'news-body';
+                bodyDiv.id = 'body-' + index;
+                bodyDiv.innerHTML = '<p>' + body + '</p>' +
+                    '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>';
+                
+                item.appendChild(header);
+                item.appendChild(bodyDiv);
                 container.appendChild(item);
             });
         }
