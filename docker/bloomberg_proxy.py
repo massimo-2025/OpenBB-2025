@@ -16,6 +16,7 @@ app.add_middleware(
 
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 RAPIDAPI_HOST = "bloomberg-real-time.p.rapidapi.com"
+SEEKING_ALPHA_HOST = "seeking-alpha.p.rapidapi.com"
 APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "")
 
 headers = {
@@ -951,6 +952,63 @@ async def benzinga_terminal():
 """
     return html
 
+@app.get("/seekingalpha/news/{symbol}")
+async def get_seekingalpha_news(symbol: str = "AAPL"):
+    """Get news for a symbol from Seeking Alpha via RapidAPI"""
+    sa_headers = {
+        "x-rapidapi-host": SEEKING_ALPHA_HOST,
+        "x-rapidapi-key": RAPIDAPI_KEY,
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get symbol ID first
+            response = await client.get(
+                f"https://{SEEKING_ALPHA_HOST}/symbols/get-meta-data",
+                headers=sa_headers,
+                params={"symbol": symbol},
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                return {"results": [], "error": f"Failed to get symbol data: {response.status_code}"}
+            
+            data = response.json()
+            symbol_id = data.get("data", {}).get("id")
+            
+            if not symbol_id:
+                return {"results": [], "error": "Symbol not found"}
+            
+            # Get news for the symbol
+            news_response = await client.get(
+                f"https://{SEEKING_ALPHA_HOST}/news/v2/list-by-symbol",
+                headers=sa_headers,
+                params={"id": symbol_id, "size": 30},
+                timeout=30.0
+            )
+            
+            if news_response.status_code != 200:
+                return {"results": [], "error": f"Failed to get news: {news_response.status_code}"}
+            
+            news_data = news_response.json()
+            articles = news_data.get("data", [])
+            
+            results = []
+            for article in articles:
+                attrs = article.get("attributes", {})
+                results.append({
+                    "title": attrs.get("title", ""),
+                    "date": attrs.get("publishOn", ""),
+                    "text": attrs.get("content", attrs.get("summary", "")),
+                    "url": f"https://seekingalpha.com{article.get('links', {}).get('self', '')}",
+                    "symbols": [symbol]
+                })
+            
+            return {"results": results}
+            
+    except Exception as e:
+        return {"results": [], "error": str(e)}
+
 @app.get("/seekingalpha/terminal", response_class=HTMLResponse)
 async def seekingalpha_terminal():
     """Seeking Alpha News Terminal - Clean expandable news feed"""
@@ -1121,7 +1179,7 @@ async def seekingalpha_terminal():
             document.getElementById('newsList').innerHTML = '<div class="loading">Loading ' + currentSymbol + ' news...</div>';
             
             try {
-                const response = await fetch('/api/v1/news/company?provider=seeking_alpha&symbol=' + currentSymbol + '&limit=30');
+                const response = await fetch('/seekingalpha/news/' + currentSymbol);
                 const data = await response.json();
                 
                 if (data.results && data.results.length > 0) {
