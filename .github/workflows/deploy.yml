@@ -86,3 +86,5 @@ NGINXEOF
           SEEKING_ALPHA_API_KEY: ${{ secrets.SEEKING_ALPHA_API_KEY }}
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
