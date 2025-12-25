@@ -26,8 +26,8 @@ WORKDIR /app
 # Upgrade pip
 RUN pip install --upgrade pip
 
-# Install OpenBB Platform
-RUN pip install openbb openbb-cli openbb-platform-api
+# Install OpenBB Platform with extensions
+RUN pip install openbb openbb-cli openbb-platform-api openbb-seeking-alpha openbb-benzinga
 
 # Create OpenBB config directory
 RUN mkdir -p /root/.openbb_platform

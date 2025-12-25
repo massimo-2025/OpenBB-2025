@@ -951,6 +951,267 @@ async def benzinga_terminal():
 """
     return html
 
+@app.get("/seekingalpha/terminal", response_class=HTMLResponse)
+async def seekingalpha_terminal():
+    """Seeking Alpha News Terminal - Clean expandable news feed"""
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SEEKING ALPHA NEWS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #00d4aa;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            padding: 15px;
+        }
+        .header {
+            border-bottom: 2px solid #00d4aa;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 {
+            color: #00d4aa;
+            font-size: 24px;
+            letter-spacing: 3px;
+        }
+        .header span {
+            color: #888;
+            font-size: 11px;
+        }
+        .search-box {
+            margin: 15px 0;
+        }
+        .search-box input {
+            background: #0f0f1a;
+            border: 1px solid #00d4aa;
+            color: #00d4aa;
+            padding: 8px 15px;
+            font-family: inherit;
+            font-size: 13px;
+            width: 200px;
+        }
+        .search-box button {
+            background: #00d4aa;
+            color: #1a1a2e;
+            border: none;
+            padding: 8px 20px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .search-box button:hover {
+            background: #00ffcc;
+        }
+        .news-item {
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .news-item:hover {
+            background: #252540;
+        }
+        .news-header {
+            display: flex;
+            padding: 10px 5px;
+            align-items: center;
+        }
+        .news-date {
+            color: #ffcc00;
+            min-width: 110px;
+            font-size: 12px;
+        }
+        .news-title {
+            color: #00d4aa;
+            flex: 1;
+        }
+        .news-title:hover {
+            color: #00ffcc;
+        }
+        .news-body {
+            display: none;
+            padding: 15px 20px 20px 115px;
+            color: #ccc;
+            line-height: 1.6;
+            font-size: 13px;
+            background: #0f0f1a;
+            border-left: 3px solid #00d4aa;
+            margin-left: 5px;
+        }
+        .news-body.expanded {
+            display: block;
+        }
+        .news-body a {
+            color: #00d4aa;
+            text-decoration: none;
+        }
+        .news-body a:hover {
+            text-decoration: underline;
+        }
+        .loading {
+            color: #888;
+            text-align: center;
+            padding: 50px;
+        }
+        .expand-icon {
+            color: #666;
+            margin-right: 10px;
+            font-size: 10px;
+        }
+        .news-item.active .expand-icon {
+            color: #00d4aa;
+        }
+        .original-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 5px 15px;
+            background: #00d4aa;
+            color: #1a1a2e;
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .original-link:hover {
+            background: #00ffcc;
+        }
+        .symbol-tag {
+            background: #00d4aa;
+            color: #1a1a2e;
+            padding: 2px 6px;
+            font-size: 10px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SEEKING ALPHA</h1>
+        <span>Investment research & analysis | Click headline to expand/collapse</span>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" id="symbolInput" placeholder="Enter symbol (e.g., AAPL)" value="AAPL">
+        <button onclick="loadNews()">SEARCH</button>
+        <button onclick="loadNews('TSLA')">TSLA</button>
+        <button onclick="loadNews('NVDA')">NVDA</button>
+        <button onclick="loadNews('MSFT')">MSFT</button>
+        <button onclick="loadNews('AMZN')">AMZN</button>
+    </div>
+    
+    <div id="newsList">
+        <div class="loading">Loading news...</div>
+    </div>
+    
+    <script>
+        let currentSymbol = 'AAPL';
+        
+        async function loadNews(symbol) {
+            if (symbol) {
+                currentSymbol = symbol;
+                document.getElementById('symbolInput').value = symbol;
+            } else {
+                currentSymbol = document.getElementById('symbolInput').value.toUpperCase() || 'AAPL';
+            }
+            
+            document.getElementById('newsList').innerHTML = '<div class="loading">Loading ' + currentSymbol + ' news...</div>';
+            
+            try {
+                const response = await fetch('/api/v1/news/company?provider=seeking_alpha&symbol=' + currentSymbol + '&limit=30');
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    renderNews(data.results);
+                } else {
+                    document.getElementById('newsList').innerHTML = '<div class="loading">No news found for ' + currentSymbol + '</div>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('newsList').innerHTML = '<div class="loading">Error loading news: ' + error.message + '</div>';
+            }
+        }
+        
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const day = date.getDate().toString().padStart(2, '0');
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = months[date.getMonth()];
+            const hours = date.getHours().toString().padStart(2, '0');
+            const mins = date.getMinutes().toString().padStart(2, '0');
+            return day + '-' + month + ';' + hours + ':' + mins;
+        }
+        
+        function renderNews(articles) {
+            const container = document.getElementById('newsList');
+            container.innerHTML = '';
+            
+            articles.forEach((article, index) => {
+                const item = document.createElement('div');
+                item.className = 'news-item';
+                item.id = 'news-' + index;
+                
+                const dateStr = formatDate(article.date || article.published);
+                const title = article.title || 'No title';
+                const body = article.text || article.body || article.content || 'No content available';
+                const url = article.url || article.link || '#';
+                const symbols = article.symbols || [];
+                
+                let symbolTags = '';
+                if (symbols.length > 0) {
+                    symbolTags = symbols.slice(0, 3).map(s => '<span class="symbol-tag">' + s + '</span>').join('');
+                }
+                
+                item.innerHTML = 
+                    '<div class="news-header" onclick="toggleBody(' + index + ')">' +
+                        '<span class="expand-icon">▶</span>' +
+                        '<span class="news-date">' + dateStr + '</span>' +
+                        '<span class="news-title">' + title + symbolTags + '</span>' +
+                    '</div>' +
+                    '<div class="news-body" id="body-' + index + '">' +
+                        body +
+                        '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>' +
+                    '</div>';
+                
+                container.appendChild(item);
+            });
+        }
+        
+        function toggleBody(index) {
+            const body = document.getElementById('body-' + index);
+            const item = document.getElementById('news-' + index);
+            const icon = item.querySelector('.expand-icon');
+            
+            if (body.classList.contains('expanded')) {
+                body.classList.remove('expanded');
+                item.classList.remove('active');
+                icon.textContent = '▶';
+            } else {
+                body.classList.add('expanded');
+                item.classList.add('active');
+                icon.textContent = '▼';
+            }
+        }
+        
+        // Handle enter key in search box
+        document.getElementById('symbolInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') loadNews();
+        });
+        
+        // Initial load
+        loadNews();
+        
+        // Refresh every 2 minutes
+        setInterval(() => loadNews(), 120000);
+    </script>
+</body>
+</html>
+"""
+    return html
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=6901)

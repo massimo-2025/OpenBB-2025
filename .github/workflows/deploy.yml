@@ -59,6 +59,12 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
+    location /seekingalpha/ {
+        proxy_pass http://127.0.0.1:6901/seekingalpha/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
     location / {
         proxy_pass http://127.0.0.1:6900;
         proxy_http_version 1.1;
