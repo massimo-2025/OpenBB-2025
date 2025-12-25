@@ -1004,9 +1004,10 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
                 symbols = [included.get(t.get("id"), "") for t in tickers[:3] if included.get(t.get("id"))]
                 
                 results.append({
+                    "id": article.get("id", ""),
                     "title": attrs.get("title", ""),
                     "date": attrs.get("publishOn", ""),
-                    "text": clean_content,
+                    "text": clean_content if clean_content else None,  # None means needs to be fetched
                     "url": f"https://seekingalpha.com{article.get('links', {}).get('self', '')}",
                     "symbols": symbols if symbols else [symbol.upper()] if symbol.lower() not in ["latest", "market-news", "all"] else []
                 })
@@ -1015,6 +1016,39 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
             
     except Exception as e:
         return {"results": [], "error": str(e)}
+
+@app.get("/seekingalpha/article/{article_id}")
+async def get_seekingalpha_article(article_id: str):
+    """Get full article content from Seeking Alpha"""
+    sa_headers = {
+        "x-rapidapi-host": SEEKING_ALPHA_HOST,
+        "x-rapidapi-key": RAPIDAPI_KEY,
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://{SEEKING_ALPHA_HOST}/news/get-details",
+                headers=sa_headers,
+                params={"id": article_id},
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                return {"content": "Failed to load article", "error": response.status_code}
+            
+            data = response.json()
+            attrs = data.get("data", {}).get("attributes", {})
+            content = attrs.get("content", "")
+            
+            # Strip HTML
+            import re
+            clean_content = re.sub(r'<[^>]+>', '', content)
+            
+            return {"content": clean_content}
+            
+    except Exception as e:
+        return {"content": f"Error: {str(e)}"}
 
 @app.get("/seekingalpha/terminal", response_class=HTMLResponse)
 async def seekingalpha_terminal():
@@ -1257,7 +1291,11 @@ async def seekingalpha_terminal():
             return div.innerHTML;
         }
         
+        // Store articles globally for fetching content later
+        let articlesData = [];
+        
         function renderNews(articles) {
+            articlesData = articles;
             const container = document.getElementById('newsList');
             container.innerHTML = '';
             
@@ -1268,7 +1306,6 @@ async def seekingalpha_terminal():
                 
                 const dateStr = formatDate(article.date || article.published);
                 const title = escapeHtml(article.title || 'No title');
-                const body = escapeHtml(article.text || article.body || article.content || 'No content available');
                 const url = article.url || article.link || '#';
                 const symbols = article.symbols || [];
                 
@@ -1288,8 +1325,18 @@ async def seekingalpha_terminal():
                 const bodyDiv = document.createElement('div');
                 bodyDiv.className = 'news-body';
                 bodyDiv.id = 'body-' + index;
-                bodyDiv.innerHTML = '<p>' + body + '</p>' +
-                    '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>';
+                
+                // Show loading or content
+                const hasContent = article.text && article.text.length > 10;
+                if (hasContent) {
+                    bodyDiv.innerHTML = '<p>' + escapeHtml(article.text) + '</p>' +
+                        '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>';
+                } else {
+                    bodyDiv.innerHTML = '<p class="loading-content">Click to load full article...</p>' +
+                        '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>';
+                    bodyDiv.dataset.articleId = article.id;
+                    bodyDiv.dataset.loaded = 'false';
+                }
                 
                 item.appendChild(header);
                 item.appendChild(bodyDiv);
@@ -1297,7 +1344,7 @@ async def seekingalpha_terminal():
             });
         }
         
-        function toggleBody(index) {
+        async function toggleBody(index) {
             const body = document.getElementById('body-' + index);
             const item = document.getElementById('news-' + index);
             const icon = item.querySelector('.expand-icon');
@@ -1310,6 +1357,26 @@ async def seekingalpha_terminal():
                 body.classList.add('expanded');
                 item.classList.add('active');
                 icon.textContent = '▼';
+                
+                // Fetch content if not loaded
+                if (body.dataset.loaded === 'false' && body.dataset.articleId) {
+                    const loadingP = body.querySelector('.loading-content');
+                    if (loadingP) loadingP.textContent = 'Loading article...';
+                    
+                    try {
+                        const response = await fetch('/seekingalpha/article/' + body.dataset.articleId);
+                        const data = await response.json();
+                        
+                        if (data.content) {
+                            const url = articlesData[index]?.url || '#';
+                            body.innerHTML = '<p>' + escapeHtml(data.content) + '</p>' +
+                                '<br><a href="' + url + '" target="_blank" class="original-link">OPEN ON SEEKING ALPHA</a>';
+                            body.dataset.loaded = 'true';
+                        }
+                    } catch (e) {
+                        console.error('Error fetching article:', e);
+                    }
+                }
             }
         }
         
