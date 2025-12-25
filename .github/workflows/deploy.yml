@@ -34,42 +34,41 @@ CONFIGEOF
             
             # Update nginx to proxy Bloomberg API
             cat > /etc/nginx/sites-available/openbb << 'NGINXEOF'
-            server {
-                listen 443 ssl;
-                server_name _;
-                ssl_certificate /etc/ssl/certs/openbb.crt;
-                ssl_certificate_key /etc/ssl/private/openbb.key;
-                
-                location = /health {
-                    return 200 '{"status": "ok"}';
-                    add_header Content-Type application/json;
-                }
-                location = /api/v1/health {
-                    return 200 '{"status": "ok"}';
-                    add_header Content-Type application/json;
-                }
-                location /bloomberg/ {
-                    proxy_pass http://127.0.0.1:6901/;
-                    proxy_http_version 1.1;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                }
-                location /benzinga/ {
-                    proxy_pass http://127.0.0.1:6901/benzinga/;
-                    proxy_http_version 1.1;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                }
-                location / {
-                    proxy_pass http://127.0.0.1:6900;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection "upgrade";
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                }
-            }
-            NGINXEOF
+server {
+    listen 443 ssl;
+    server_name _;
+    ssl_certificate /etc/ssl/certs/openbb.crt;
+    ssl_certificate_key /etc/ssl/private/openbb.key;
+    location = /health {
+        return 200 '{"status": "ok"}';
+        add_header Content-Type application/json;
+    }
+    location = /api/v1/health {
+        return 200 '{"status": "ok"}';
+        add_header Content-Type application/json;
+    }
+    location /bloomberg/ {
+        proxy_pass http://127.0.0.1:6901/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /benzinga/ {
+        proxy_pass http://127.0.0.1:6901/benzinga/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:6900;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+NGINXEOF
             nginx -t && systemctl reload nginx
             
             # Open port 6901 if needed
