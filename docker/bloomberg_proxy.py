@@ -870,7 +870,7 @@ async def benzinga_terminal():
     <script>
         async function loadNews() {
             try {
-                const response = await fetch('http://localhost:6900/api/v1/news/world?provider=benzinga&limit=30');
+                const response = await fetch('/api/v1/news/world?provider=benzinga&limit=30');
                 const data = await response.json();
                 
                 if (data.results && data.results.length > 0) {
