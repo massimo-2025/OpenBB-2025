@@ -962,28 +962,11 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
     
     try:
         async with httpx.AsyncClient() as client:
-            # Get symbol ID first
-            response = await client.get(
-                f"https://{SEEKING_ALPHA_HOST}/symbols/get-meta-data",
-                headers=sa_headers,
-                params={"symbol": symbol},
-                timeout=30.0
-            )
-            
-            if response.status_code != 200:
-                return {"results": [], "error": f"Failed to get symbol data: {response.status_code}"}
-            
-            data = response.json()
-            symbol_id = data.get("data", {}).get("id")
-            
-            if not symbol_id:
-                return {"results": [], "error": "Symbol not found"}
-            
-            # Get news for the symbol
+            # Get news for the symbol using slug (lowercase symbol)
             news_response = await client.get(
-                f"https://{SEEKING_ALPHA_HOST}/news/v2/list-by-symbol",
+                f"https://{SEEKING_ALPHA_HOST}/news/list",
                 headers=sa_headers,
-                params={"id": symbol_id, "size": 30},
+                params={"id": symbol.lower(), "size": 30},
                 timeout=30.0
             )
             
@@ -996,12 +979,18 @@ async def get_seekingalpha_news(symbol: str = "AAPL"):
             results = []
             for article in articles:
                 attrs = article.get("attributes", {})
+                # Extract text content, strip HTML tags for display
+                content = attrs.get("content", "")
+                # Simple HTML strip
+                import re
+                clean_content = re.sub(r'<[^>]+>', '', content)
+                
                 results.append({
                     "title": attrs.get("title", ""),
                     "date": attrs.get("publishOn", ""),
-                    "text": attrs.get("content", attrs.get("summary", "")),
-                    "url": f"https://seekingalpha.com{article.get('links', {}).get('self', '')}",
-                    "symbols": [symbol]
+                    "text": clean_content,
+                    "url": f"https://seekingalpha.com/news/{article.get('id', '')}",
+                    "symbols": [symbol.upper()]
                 })
             
             return {"results": results}
